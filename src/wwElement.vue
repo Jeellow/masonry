@@ -106,13 +106,25 @@ export default {
     const initMasonry = () => {
       if (!masonryContainer.value) return
 
+      console.log('Init Masonry with:', {
+        containerWidth: containerWidth.value,
+        columnWidth: columnWidth.value,
+        gap: gap.value,
+        minColumns: minColumns.value,
+        maxColumns: maxColumns.value,
+        itemsCount: processedItems.value.length
+      })
+
       masonryInstance = new Masonry(masonryContainer.value, {
         itemSelector: '.masonry-item',
         columnWidth: columnWidth.value,
         gutter: gap.value,
         fitWidth: false,
+        horizontalOrder: true,
         transitionDuration: 0, // Disable masonry animations, we handle them
       })
+
+      console.log('Masonry initialized:', masonryInstance)
     }
 
     // Layout masonry
@@ -121,7 +133,13 @@ export default {
 
       layoutTimeout = setTimeout(() => {
         if (masonryInstance) {
+          console.log('Layout masonry called')
           masonryInstance.layout()
+
+          // Force a reflow to ensure masonry calculates positions correctly
+          if (masonryContainer.value) {
+            masonryContainer.value.offsetHeight
+          }
         }
       }, delay)
     }
