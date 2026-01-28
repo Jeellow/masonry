@@ -120,10 +120,10 @@ export default {
       type: 'Number',
       section: 'style',
       bindable: true,
-      defaultValue: 10,
+      defaultValue: 3,
       options: {
         min: 1,
-        max: 20,
+        max: 4,
         step: 1,
       },
       /* wwEditor:start */
@@ -133,22 +133,6 @@ export default {
       },
       propertyHelp: {
         tooltip: 'Maximum number of columns for better performance control.',
-      },
-      /* wwEditor:end */
-    },
-
-    // ============================================
-    // PERFORMANCE SETTINGS
-    // ============================================
-    enableLazyLoading: {
-      label: { en: 'Enable Lazy Loading' },
-      type: 'OnOff',
-      section: 'settings',
-      bindable: true,
-      defaultValue: true,
-      /* wwEditor:start */
-      propertyHelp: {
-        tooltip: 'Enable lazy loading for images to improve initial load performance.',
       },
       /* wwEditor:end */
     },

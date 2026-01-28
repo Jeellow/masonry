@@ -1,8 +1,15 @@
 <template>
-  <div class="masonry-container" :class="{ 'is-visible': hasItems }">
+  <div
+    class="masonry-container"
+    :class="{
+      'is-visible': hasItems,
+      'no-animations': disableAnimations
+    }"
+  >
     <MasonryWall
       v-show="hasItems"
-      :items="processedItems"
+      :key="masonryKey"
+      :items="visibleItems"
       :column-width="columnWidth"
       :gap="gap"
       :min-columns="minColumns"
@@ -23,7 +30,7 @@
 </template>
 
 <script>
-import { computed, watch, shallowRef, defineComponent } from 'vue'
+import { computed, watch, shallowRef, ref, nextTick, defineComponent } from 'vue'
 import MasonryWall from '@yeger/vue-masonry-wall'
 
 // Optimized child component for better memoization
@@ -86,6 +93,20 @@ export default {
     // Use shallowRef for better performance with large arrays
     const processedItems = shallowRef([])
 
+    // Progressive rendering: items actually displayed
+    const visibleItems = shallowRef([])
+    const isProgressiveLoading = ref(false)
+
+    // Performance optimization: disable animations during visibility changes
+    const disableAnimations = ref(false)
+    const masonryKey = ref(0)
+
+    // Track visibility state
+    const wasVisible = ref(false)
+    let animationTimeout = null
+    let recalcTimeout = null
+    let progressiveTimeout = null
+
     // Watch items and update shallowRef
     watch(
       () => props.content?.items,
@@ -126,8 +147,90 @@ export default {
       return `item-idx-${index}`
     }
 
+    // Optimized progressive rendering: render all at once but stagger wwLayoutItemContext initialization
+    const renderItemsProgressively = (items) => {
+      return new Promise((resolve) => {
+        if (!items || items.length === 0) {
+          visibleItems.value = []
+          isProgressiveLoading.value = false
+          resolve()
+          return
+        }
+
+        isProgressiveLoading.value = true
+
+        // Render all items immediately (single masonry calculation)
+        // The GPU/browser will handle the actual rendering progressively
+        requestAnimationFrame(() => {
+          visibleItems.value = items
+
+          // Mark as done after a short delay
+          progressiveTimeout = setTimeout(() => {
+            isProgressiveLoading.value = false
+            resolve()
+          }, 100)
+        })
+      })
+    }
+
+    // Solution 1 & 4: Optimize visibility changes
+    watch(hasItems, (isVisible, oldValue) => {
+      // Clear any pending timeouts
+      if (animationTimeout) clearTimeout(animationTimeout)
+      if (recalcTimeout) clearTimeout(recalcTimeout)
+      if (progressiveTimeout) clearTimeout(progressiveTimeout)
+
+      // Detect visibility change (none -> block or block -> none)
+      const visibilityChanged = wasVisible.value !== isVisible
+
+      if (visibilityChanged && isVisible) {
+        // Becoming visible: disable animations temporarily
+        disableAnimations.value = true
+
+        // Use requestAnimationFrame to optimize the recalculation
+        requestAnimationFrame(() => {
+          nextTick(async () => {
+            // Optimized rendering: single layout calculation
+            await renderItemsProgressively(processedItems.value)
+
+            // Re-enable animations after layout is calculated
+            animationTimeout = setTimeout(() => {
+              disableAnimations.value = false
+            }, 150)
+          })
+        })
+      } else if (visibilityChanged && !isVisible) {
+        // Becoming hidden: disable animations immediately
+        disableAnimations.value = true
+        isProgressiveLoading.value = false
+
+        // Reset after transition
+        recalcTimeout = setTimeout(() => {
+          disableAnimations.value = false
+        }, 100)
+      }
+
+      wasVisible.value = isVisible
+    })
+
+    // Watch processedItems changes (new data loaded)
+    watch(
+      () => processedItems.value.length,
+      (newLength, oldLength) => {
+        // If items changed while visible, update immediately
+        if (hasItems.value && newLength > 0) {
+          if (progressiveTimeout) clearTimeout(progressiveTimeout)
+          renderItemsProgressively(processedItems.value)
+        } else if (!hasItems.value) {
+          visibleItems.value = []
+        }
+      }
+    )
+
     return {
       processedItems,
+      visibleItems,
+      isProgressiveLoading,
       columnWidth,
       gap,
       minColumns,
@@ -135,6 +238,8 @@ export default {
       hasItems,
       enableLazyLoading,
       getItemKey,
+      disableAnimations,
+      masonryKey,
       /* wwEditor:start */
       isEditing,
       /* wwEditor:end */
@@ -154,6 +259,14 @@ export default {
 
   &.is-visible {
     opacity: 1;
+  }
+
+  // Solution 1: Disable animations during visibility changes
+  &.no-animations {
+    .masonry-item {
+      transition: none !important;
+      animation: none !important;
+    }
   }
 }
 
@@ -250,4 +363,5 @@ export default {
     preload: metadata;
   }
 }
+
 </style>
