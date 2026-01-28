@@ -68,6 +68,10 @@ export default {
       const cols = []
       const numCols = maxColumns.value
 
+      console.log('=== MASONRY DEBUG ===')
+      console.log('maxColumns:', numCols)
+      console.log('processedItems.length:', processedItems.value.length)
+
       // Initialize columns
       for (let i = 0; i < numCols; i++) {
         cols.push([])
@@ -76,8 +80,13 @@ export default {
       // Distribute items round-robin
       processedItems.value.forEach((item, index) => {
         const colIndex = index % numCols
+        console.log(`Item ${index} -> Column ${colIndex}`)
         cols[colIndex].push({ item, originalIndex: index })
       })
+
+      console.log('Columns created:', cols.length)
+      console.log('Items per column:', cols.map(c => c.length))
+      console.log('===================')
 
       return cols
     })
@@ -127,7 +136,8 @@ export default {
   box-sizing: border-box;
   opacity: 0;
   transition: opacity 0.25s ease-in-out;
-  display: flex;
+  display: flex !important;
+  flex-direction: row !important;
   gap: var(--gap, 16px);
 
   &.is-visible {
