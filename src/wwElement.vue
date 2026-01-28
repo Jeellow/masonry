@@ -1,7 +1,7 @@
 <template>
   <div class="masonry-container" :style="containerStyle">
     <MasonryWall
-      v-if="processedItems?.length"
+      v-show="processedItems?.length"
       :items="processedItems"
       :column-width="columnWidth"
       :gap="gap"
