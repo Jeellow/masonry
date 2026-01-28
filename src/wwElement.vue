@@ -6,6 +6,7 @@
       'is-visible': hasItems,
       'no-animations': disableAnimations
     }"
+    :style="{ '--column-width': `${columnWidth}px` }"
     v-show="hasItems"
   >
     <div
@@ -58,17 +59,40 @@ export default {
     const processedItems = shallowRef([])
     const disableAnimations = ref(false)
     const wasVisible = ref(false)
+    const containerWidth = ref(0)
 
     // Masonry instance
     let masonryInstance = null
     let layoutTimeout = null
     let animationTimeout = null
+    let resizeObserver = null
 
     // Configuration
-    const columnWidth = computed(() => props.content?.columnWidth || 300)
+    const minColumns = computed(() => props.content?.minColumns || 1)
+    const maxColumns = computed(() => props.content?.maxColumns || 3)
+    const baseColumnWidth = computed(() => props.content?.columnWidth || 300)
     const gap = computed(() => props.content?.gap ?? 16)
     const hasItems = computed(() => processedItems.value?.length > 0)
     const enableLazyLoading = computed(() => props.content?.enableLazyLoading !== false)
+
+    // Calculate actual column width based on container width and min/max columns
+    const columnWidth = computed(() => {
+      if (!containerWidth.value) return baseColumnWidth.value
+
+      const availableWidth = containerWidth.value
+      const gapValue = gap.value
+
+      // Calculate how many columns would fit with base column width
+      let columns = Math.floor((availableWidth + gapValue) / (baseColumnWidth.value + gapValue))
+
+      // Clamp between min and max
+      columns = Math.max(minColumns.value, Math.min(maxColumns.value, columns))
+
+      // Calculate actual column width to fill the space
+      const actualWidth = (availableWidth - (columns - 1) * gapValue) / columns
+
+      return Math.floor(actualWidth)
+    })
 
     // Memoized key function
     const getItemKey = (item, index) => {
@@ -159,8 +183,8 @@ export default {
       wasVisible.value = isVisible
     })
 
-    // Watch config changes
-    watch([columnWidth, gap], () => {
+    // Watch config changes (columnWidth, gap, min/max columns)
+    watch([columnWidth, gap, minColumns, maxColumns], () => {
       if (masonryInstance && hasItems.value) {
         destroyMasonry()
         nextTick(() => {
@@ -170,8 +194,30 @@ export default {
       }
     })
 
+    // Observe container width changes
+    const observeContainerWidth = () => {
+      if (!masonryContainer.value) return
+
+      resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const newWidth = entry.contentRect.width
+          if (newWidth !== containerWidth.value) {
+            containerWidth.value = newWidth
+          }
+        }
+      })
+
+      resizeObserver.observe(masonryContainer.value)
+    }
+
     // Lifecycle
     onMounted(() => {
+      if (masonryContainer.value) {
+        // Set initial width
+        containerWidth.value = masonryContainer.value.offsetWidth
+        observeContainerWidth()
+      }
+
       if (hasItems.value) {
         nextTick(() => {
           initMasonry()
@@ -183,6 +229,7 @@ export default {
     onBeforeUnmount(() => {
       if (layoutTimeout) clearTimeout(layoutTimeout)
       if (animationTimeout) clearTimeout(animationTimeout)
+      if (resizeObserver) resizeObserver.disconnect()
       destroyMasonry()
     })
 
@@ -222,6 +269,7 @@ export default {
 }
 
 .masonry-item {
+  width: var(--column-width, 300px);
   margin-bottom: 0; // Masonry handles spacing
   box-sizing: border-box;
   backface-visibility: hidden;
