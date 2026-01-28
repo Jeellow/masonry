@@ -6,7 +6,7 @@
     "serve": "weweb serve"
   },
   "dependencies": {
-    "@yeger/vue-masonry-wall": "5.0.8"
+    "masonry-layout": "^4.2.2"
   },
   "devDependencies": {
     "@weweb/cli": "latest"
