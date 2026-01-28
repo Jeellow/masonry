@@ -3,7 +3,8 @@
     class="masonry-container"
     :class="{
       'is-visible': hasItems,
-      'no-animations': disableAnimations
+      'no-animations': disableAnimations,
+      'is-loading': isProgressiveLoading
     }"
   >
     <MasonryWall
@@ -23,6 +24,7 @@
           :item-key="getItemKey(item, index)"
           :repeated-items="processedItems"
           :enable-lazy-loading="enableLazyLoading"
+          :is-skeleton="item.__skeleton"
         />
       </template>
     </MasonryWall>
@@ -42,15 +44,25 @@ const MasonryItem = defineComponent({
     itemKey: { type: String, required: true },
     repeatedItems: { type: Array, required: true },
     enableLazyLoading: { type: Boolean, default: true },
+    isSkeleton: { type: Boolean, default: false },
   },
   template: `
     <div
       class="masonry-item"
       :key="itemKey"
       :data-index="index"
-      :class="{ 'lazy-load': enableLazyLoading }"
+      :class="{
+        'lazy-load': enableLazyLoading,
+        'is-skeleton': isSkeleton
+      }"
     >
+      <div v-if="isSkeleton" class="skeleton-loader" :style="{ height: item.__skeletonHeight + 'px' }">
+        <div class="skeleton-image" :style="{ height: (item.__skeletonHeight * 0.7) + 'px' }"></div>
+        <div class="skeleton-text"></div>
+        <div class="skeleton-text short"></div>
+      </div>
       <wwLayoutItemContext
+        v-else
         :key="'context-' + itemKey"
         :index="index"
         :item="null"
@@ -147,8 +159,18 @@ export default {
       return `item-idx-${index}`
     }
 
-    // Optimized progressive rendering: give WeWeb time to process display change
-    const renderItemsProgressively = (items) => {
+    // Generate realistic skeleton placeholders with variable heights
+    const generateSkeletons = (count) => {
+      const heights = [200, 250, 180, 300, 220, 270, 190, 240, 280, 210, 260, 230, 290, 200, 250]
+      return Array(count).fill(null).map((_, i) => ({
+        __skeleton: true,
+        __skeletonId: `skeleton-${i}`,
+        __skeletonHeight: heights[i % heights.length]
+      }))
+    }
+
+    // Optimized progressive rendering: show skeletons immediately, then replace progressively
+    const renderItemsProgressively = (items, batchSize = 3, delayBetweenBatches = 80) => {
       return new Promise((resolve) => {
         if (!items || items.length === 0) {
           visibleItems.value = []
@@ -159,23 +181,41 @@ export default {
 
         isProgressiveLoading.value = true
 
-        // Wait longer for WeWeb to fully process the display change
-        // Use double requestAnimationFrame to ensure layout is stable
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            visibleItems.value = items
+        // Show skeletons IMMEDIATELY for instant feedback
+        const skeletons = generateSkeletons(items.length)
+        visibleItems.value = skeletons
 
-            // Mark as done after WeWeb has processed everything
-            progressiveTimeout = setTimeout(() => {
+        // Wait 500ms for WeWeb to process, then start replacing skeletons
+        progressiveTimeout = setTimeout(() => {
+          let currentIndex = 0
+
+          const renderBatch = () => {
+            const endIndex = Math.min(currentIndex + batchSize, items.length)
+
+            // Replace skeletons progressively (keep existing items + add new ones)
+            const updatedItems = [
+              ...items.slice(0, endIndex),
+              ...skeletons.slice(endIndex)
+            ]
+
+            visibleItems.value = updatedItems
+            currentIndex = endIndex
+
+            if (currentIndex < items.length) {
+              progressiveTimeout = setTimeout(renderBatch, delayBetweenBatches)
+            } else {
+              // All items rendered
               isProgressiveLoading.value = false
               resolve()
-            }, 200)
-          })
-        })
+            }
+          }
+
+          renderBatch()
+        }, 500) // Give WeWeb 500ms to process display change
       })
     }
 
-    // Solution 1 & 4: Optimize visibility changes with proper WeWeb timing
+    // Solution 1 & 4: Optimize visibility changes with skeletons and progressive rendering
     watch(hasItems, (isVisible, oldValue) => {
       // Clear any pending timeouts
       if (animationTimeout) clearTimeout(animationTimeout)
@@ -189,21 +229,18 @@ export default {
         // Becoming visible: disable animations immediately
         disableAnimations.value = true
 
-        // Give WeWeb more time to process the display change
-        // Use setTimeout to ensure WeWeb's internal processing is complete
-        setTimeout(() => {
-          requestAnimationFrame(() => {
-            nextTick(async () => {
-              // Optimized rendering: single layout calculation
-              await renderItemsProgressively(processedItems.value)
+        // Start rendering process immediately (skeletons will show right away)
+        requestAnimationFrame(() => {
+          nextTick(async () => {
+            // Progressive rendering with skeletons (instant feedback)
+            await renderItemsProgressively(processedItems.value, 3, 80)
 
-              // Re-enable animations after everything is fully processed
-              animationTimeout = setTimeout(() => {
-                disableAnimations.value = false
-              }, 300)
-            })
+            // Re-enable animations after everything is rendered
+            animationTimeout = setTimeout(() => {
+              disableAnimations.value = false
+            }, 200)
           })
-        }, 50) // Give WeWeb 50ms to process display change
+        })
       } else if (visibilityChanged && !isVisible) {
         // Becoming hidden: disable animations immediately
         disableAnimations.value = true
@@ -212,6 +249,7 @@ export default {
         // Reset after transition
         recalcTimeout = setTimeout(() => {
           disableAnimations.value = false
+          visibleItems.value = []
         }, 100)
       }
 
@@ -222,10 +260,10 @@ export default {
     watch(
       () => processedItems.value.length,
       (newLength, oldLength) => {
-        // If items changed while visible, update immediately
-        if (hasItems.value && newLength > 0) {
+        // If items changed while visible, update with progressive rendering
+        if (hasItems.value && newLength > 0 && wasVisible.value) {
           if (progressiveTimeout) clearTimeout(progressiveTimeout)
-          renderItemsProgressively(processedItems.value)
+          renderItemsProgressively(processedItems.value, 3, 80)
         } else if (!hasItems.value) {
           visibleItems.value = []
         }
@@ -369,4 +407,59 @@ export default {
   }
 }
 
+/* Skeleton loader styles with variable heights */
+.masonry-item.is-skeleton {
+  .skeleton-loader {
+    padding: 12px;
+    animation: none;
+    box-sizing: border-box;
+  }
+
+  .skeleton-image {
+    width: 100%;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+
+  .skeleton-text {
+    width: 100%;
+    height: 16px;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    margin-bottom: 8px;
+
+    &.short {
+      width: 60%;
+    }
+  }
+}
+
+.masonry-container.is-loading {
+  pointer-events: none;
+}
+
+/* Smooth fade transition when replacing skeletons */
+.masonry-item {
+  &.is-skeleton {
+    opacity: 0.7;
+  }
+
+  &:not(.is-skeleton) {
+    animation: fadeInItem 0.3s ease-out;
+  }
+}
+
+@keyframes fadeInItem {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 </style>
