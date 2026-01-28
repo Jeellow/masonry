@@ -147,7 +147,7 @@ export default {
       return `item-idx-${index}`
     }
 
-    // Optimized progressive rendering: render all at once but stagger wwLayoutItemContext initialization
+    // Optimized progressive rendering: give WeWeb time to process display change
     const renderItemsProgressively = (items) => {
       return new Promise((resolve) => {
         if (!items || items.length === 0) {
@@ -159,21 +159,23 @@ export default {
 
         isProgressiveLoading.value = true
 
-        // Render all items immediately (single masonry calculation)
-        // The GPU/browser will handle the actual rendering progressively
+        // Wait longer for WeWeb to fully process the display change
+        // Use double requestAnimationFrame to ensure layout is stable
         requestAnimationFrame(() => {
-          visibleItems.value = items
+          requestAnimationFrame(() => {
+            visibleItems.value = items
 
-          // Mark as done after a short delay
-          progressiveTimeout = setTimeout(() => {
-            isProgressiveLoading.value = false
-            resolve()
-          }, 100)
+            // Mark as done after WeWeb has processed everything
+            progressiveTimeout = setTimeout(() => {
+              isProgressiveLoading.value = false
+              resolve()
+            }, 200)
+          })
         })
       })
     }
 
-    // Solution 1 & 4: Optimize visibility changes
+    // Solution 1 & 4: Optimize visibility changes with proper WeWeb timing
     watch(hasItems, (isVisible, oldValue) => {
       // Clear any pending timeouts
       if (animationTimeout) clearTimeout(animationTimeout)
@@ -184,21 +186,24 @@ export default {
       const visibilityChanged = wasVisible.value !== isVisible
 
       if (visibilityChanged && isVisible) {
-        // Becoming visible: disable animations temporarily
+        // Becoming visible: disable animations immediately
         disableAnimations.value = true
 
-        // Use requestAnimationFrame to optimize the recalculation
-        requestAnimationFrame(() => {
-          nextTick(async () => {
-            // Optimized rendering: single layout calculation
-            await renderItemsProgressively(processedItems.value)
+        // Give WeWeb more time to process the display change
+        // Use setTimeout to ensure WeWeb's internal processing is complete
+        setTimeout(() => {
+          requestAnimationFrame(() => {
+            nextTick(async () => {
+              // Optimized rendering: single layout calculation
+              await renderItemsProgressively(processedItems.value)
 
-            // Re-enable animations after layout is calculated
-            animationTimeout = setTimeout(() => {
-              disableAnimations.value = false
-            }, 150)
+              // Re-enable animations after everything is fully processed
+              animationTimeout = setTimeout(() => {
+                disableAnimations.value = false
+              }, 300)
+            })
           })
-        })
+        }, 50) // Give WeWeb 50ms to process display change
       } else if (visibilityChanged && !isVisible) {
         // Becoming hidden: disable animations immediately
         disableAnimations.value = true
