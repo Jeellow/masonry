@@ -2,11 +2,11 @@
   <div
     ref="masonryContainer"
     class="masonry-container"
-    :class="{
-      'is-visible': hasItems,
-      'no-animations': disableAnimations
+    :class="{ 'is-visible': hasItems }"
+    :style="{
+      '--num-columns': numColumns,
+      '--gap': `${gap}px`
     }"
-    :style="{ '--column-width': `${columnWidth}px` }"
     v-show="hasItems"
   >
     <div
@@ -28,8 +28,7 @@
 </template>
 
 <script>
-import { computed, watch, shallowRef, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import Masonry from 'masonry-layout'
+import { computed, watch, shallowRef, ref, onMounted, onBeforeUnmount } from 'vue'
 
 export default {
   props: {
@@ -56,14 +55,8 @@ export default {
     // Refs
     const masonryContainer = ref(null)
     const processedItems = shallowRef([])
-    const disableAnimations = ref(false)
-    const wasVisible = ref(false)
     const containerWidth = ref(0)
 
-    // Masonry instance
-    let masonryInstance = null
-    let layoutTimeout = null
-    let animationTimeout = null
     let resizeObserver = null
 
     // Configuration
@@ -74,23 +67,18 @@ export default {
     const hasItems = computed(() => processedItems.value?.length > 0)
     const enableLazyLoading = computed(() => props.content?.enableLazyLoading !== false)
 
-    // Calculate actual column width based on container width and min/max columns
-    const columnWidth = computed(() => {
-      if (!containerWidth.value) return baseColumnWidth.value
+    // Calculate number of columns
+    const numColumns = computed(() => {
+      if (!containerWidth.value) return minColumns.value
 
       const availableWidth = containerWidth.value
       const gapValue = gap.value
 
-      // Calculate how many columns would fit with base column width
+      // Calculate how many columns would fit
       let columns = Math.floor((availableWidth + gapValue) / (baseColumnWidth.value + gapValue))
 
       // Clamp between min and max
-      columns = Math.max(minColumns.value, Math.min(maxColumns.value, columns))
-
-      // Calculate actual column width to fill the space
-      const actualWidth = (availableWidth - (columns - 1) * gapValue) / columns
-
-      return Math.floor(actualWidth)
+      return Math.max(minColumns.value, Math.min(maxColumns.value, columns))
     })
 
     // Memoized key function
@@ -99,66 +87,6 @@ export default {
       if (item?.uuid) return `item-${item.uuid}`
       if (item?._id) return `item-${item._id}`
       return `item-idx-${index}`
-    }
-
-    // Initialize Masonry
-    const initMasonry = () => {
-      if (!masonryContainer.value) return
-
-      // Check if items exist in DOM
-      const domItems = masonryContainer.value.querySelectorAll('.masonry-item')
-      console.log('Init Masonry with:', {
-        containerWidth: containerWidth.value,
-        columnWidth: columnWidth.value,
-        gap: gap.value,
-        minColumns: minColumns.value,
-        maxColumns: maxColumns.value,
-        itemsCount: processedItems.value.length,
-        domItemsCount: domItems.length
-      })
-
-      // If no items in DOM yet, wait a bit more
-      if (domItems.length === 0 && processedItems.value.length > 0) {
-        console.warn('Items not in DOM yet, retrying...')
-        setTimeout(() => initMasonry(), 50)
-        return
-      }
-
-      masonryInstance = new Masonry(masonryContainer.value, {
-        itemSelector: '.masonry-item',
-        columnWidth: columnWidth.value,
-        gutter: gap.value,
-        fitWidth: false,
-        horizontalOrder: true,
-        transitionDuration: 0, // Disable masonry animations, we handle them
-      })
-
-      console.log('Masonry initialized:', masonryInstance)
-    }
-
-    // Layout masonry
-    const layoutMasonry = (delay = 0) => {
-      if (layoutTimeout) clearTimeout(layoutTimeout)
-
-      layoutTimeout = setTimeout(() => {
-        if (masonryInstance) {
-          console.log('Layout masonry called')
-          masonryInstance.layout()
-
-          // Force a reflow to ensure masonry calculates positions correctly
-          if (masonryContainer.value) {
-            masonryContainer.value.offsetHeight
-          }
-        }
-      }, delay)
-    }
-
-    // Destroy masonry
-    const destroyMasonry = () => {
-      if (masonryInstance) {
-        masonryInstance.destroy()
-        masonryInstance = null
-      }
     }
 
     // Watch items changes
@@ -172,70 +100,9 @@ export default {
         }
         processedItems.value = [...newItems]
         setItemCount(newItems.length)
-
-        // Relayout after items change
-        if (hasItems.value && masonryInstance) {
-          nextTick(() => layoutMasonry(50))
-        }
       },
       { immediate: true }
     )
-
-    // Watch visibility changes
-    watch(hasItems, (isVisible) => {
-      if (animationTimeout) clearTimeout(animationTimeout)
-      const visibilityChanged = wasVisible.value !== isVisible
-
-      if (visibilityChanged && isVisible) {
-        disableAnimations.value = true
-
-        nextTick(() => {
-          // Update container width when becoming visible
-          if (masonryContainer.value) {
-            containerWidth.value = masonryContainer.value.offsetWidth
-          }
-
-          if (!masonryInstance) {
-            initMasonry()
-          }
-
-          // Layout with delay for WeWeb
-          layoutMasonry(100)
-
-          // Re-enable animations
-          animationTimeout = setTimeout(() => {
-            disableAnimations.value = false
-          }, 200)
-        })
-      } else if (visibilityChanged && !isVisible) {
-        disableAnimations.value = true
-        destroyMasonry()
-      }
-
-      wasVisible.value = isVisible
-    })
-
-    // Watch config changes (columnWidth, gap, min/max columns)
-    watch([columnWidth, gap, minColumns, maxColumns], () => {
-      if (masonryInstance && hasItems.value) {
-        destroyMasonry()
-        nextTick(() => {
-          initMasonry()
-          layoutMasonry(50)
-        })
-      }
-    })
-
-    // Watch container width changes to reinitialize masonry
-    watch(containerWidth, (newWidth) => {
-      if (newWidth > 0 && masonryInstance && hasItems.value) {
-        destroyMasonry()
-        nextTick(() => {
-          initMasonry()
-          layoutMasonry(50)
-        })
-      }
-    })
 
     // Observe container width changes
     const observeContainerWidth = () => {
@@ -243,10 +110,7 @@ export default {
 
       resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
-          const newWidth = entry.contentRect.width
-          if (newWidth !== containerWidth.value) {
-            containerWidth.value = newWidth
-          }
+          containerWidth.value = entry.contentRect.width
         }
       })
 
@@ -255,28 +119,14 @@ export default {
 
     // Lifecycle
     onMounted(() => {
-      nextTick(() => {
-        if (masonryContainer.value) {
-          // Set initial width first
-          containerWidth.value = masonryContainer.value.offsetWidth
-          observeContainerWidth()
-
-          // Then initialize masonry if we have items
-          if (hasItems.value) {
-            nextTick(() => {
-              initMasonry()
-              layoutMasonry(100)
-            })
-          }
-        }
-      })
+      if (masonryContainer.value) {
+        containerWidth.value = masonryContainer.value.offsetWidth
+        observeContainerWidth()
+      }
     })
 
     onBeforeUnmount(() => {
-      if (layoutTimeout) clearTimeout(layoutTimeout)
-      if (animationTimeout) clearTimeout(animationTimeout)
       if (resizeObserver) resizeObserver.disconnect()
-      destroyMasonry()
     })
 
     return {
@@ -285,8 +135,8 @@ export default {
       hasItems,
       enableLazyLoading,
       getItemKey,
-      disableAnimations,
-      columnWidth,
+      numColumns,
+      gap,
       /* wwEditor:start */
       isEditing,
       /* wwEditor:end */
@@ -303,28 +153,31 @@ export default {
   opacity: 0;
   transition: opacity 0.25s ease-in-out;
 
+  // CSS Columns for masonry layout
+  column-count: var(--num-columns, 3);
+  column-gap: var(--gap, 16px);
+
   &.is-visible {
     opacity: 1;
-  }
-
-  // Disable animations during layout calculations
-  &.no-animations {
-    .masonry-item {
-      transition: none !important;
-    }
   }
 }
 
 .masonry-item {
-  width: var(--column-width, 300px);
-  margin-bottom: 0; // Masonry handles spacing
   box-sizing: border-box;
   backface-visibility: hidden;
   transform: translateZ(0);
+  animation: fadeInMasonry 0.3s ease-out;
+
+  // Prevent items from breaking across columns
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin-bottom: var(--gap, 16px);
 }
 
 .masonry-item-content {
   width: 100%;
+  height: 100%;
   contain: layout style;
 
   // Image lazy loading optimization
@@ -361,10 +214,6 @@ export default {
   100% {
     background-position: 200% 0;
   }
-}
-
-.masonry-item {
-  animation: fadeInMasonry 0.3s ease-out;
 }
 
 /* Optimize rendering during visibility changes */

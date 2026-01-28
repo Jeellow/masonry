@@ -5,9 +5,7 @@
     "build": "weweb build",
     "serve": "weweb serve"
   },
-  "dependencies": {
-    "masonry-layout": "^4.2.2"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@weweb/cli": "latest"
   }
