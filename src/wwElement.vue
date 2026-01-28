@@ -17,10 +17,9 @@
     >
       <wwLayoutItemContext
         :index="index"
-        :item="null"
+        :item="item"
         is-repeat
         :data="item"
-        :repeated-items="processedItems"
       >
         <wwLayout path="itemContent" class="masonry-item-content" />
       </wwLayoutItemContext>
@@ -106,14 +105,24 @@ export default {
     const initMasonry = () => {
       if (!masonryContainer.value) return
 
+      // Check if items exist in DOM
+      const domItems = masonryContainer.value.querySelectorAll('.masonry-item')
       console.log('Init Masonry with:', {
         containerWidth: containerWidth.value,
         columnWidth: columnWidth.value,
         gap: gap.value,
         minColumns: minColumns.value,
         maxColumns: maxColumns.value,
-        itemsCount: processedItems.value.length
+        itemsCount: processedItems.value.length,
+        domItemsCount: domItems.length
       })
+
+      // If no items in DOM yet, wait a bit more
+      if (domItems.length === 0 && processedItems.value.length > 0) {
+        console.warn('Items not in DOM yet, retrying...')
+        setTimeout(() => initMasonry(), 50)
+        return
+      }
 
       masonryInstance = new Masonry(masonryContainer.value, {
         itemSelector: '.masonry-item',
