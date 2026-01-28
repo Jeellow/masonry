@@ -1,10 +1,9 @@
 <template>
   <div
-    ref="masonryContainer"
     class="masonry-container"
     :class="{ 'is-visible': hasItems }"
     :style="{ '--gap': `${gap}px` }"
-    v-show="hasItems"
+    v-if="hasItems"
   >
     <div
       v-for="(column, colIndex) in columns"
@@ -31,7 +30,7 @@
 </template>
 
 <script>
-import { computed, watch, shallowRef, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, watch, shallowRef } from 'vue'
 
 export default {
   props: {
@@ -56,51 +55,18 @@ export default {
     })
 
     // Refs
-    const masonryContainer = ref(null)
     const processedItems = shallowRef([])
-    const containerWidth = ref(0)
-
-    let resizeObserver = null
 
     // Configuration
-    const minColumns = computed(() => props.content?.minColumns || 1)
     const maxColumns = computed(() => props.content?.maxColumns || 3)
-    const baseColumnWidth = computed(() => props.content?.columnWidth || 300)
     const gap = computed(() => props.content?.gap ?? 16)
     const hasItems = computed(() => processedItems.value?.length > 0)
     const enableLazyLoading = computed(() => props.content?.enableLazyLoading !== false)
 
-    // Calculate number of columns
-    const numColumns = computed(() => {
-      if (!containerWidth.value) {
-        console.log('[Masonry] containerWidth is 0, using maxColumns:', maxColumns.value)
-        return maxColumns.value // Use max by default
-      }
-
-      const availableWidth = containerWidth.value
-      const gapValue = gap.value
-
-      // Calculate how many columns would fit
-      let columns = Math.floor((availableWidth + gapValue) / (baseColumnWidth.value + gapValue))
-
-      // Clamp between min and max
-      const result = Math.max(minColumns.value, Math.min(maxColumns.value, columns))
-      console.log('[Masonry] Calculated columns:', {
-        containerWidth: containerWidth.value,
-        baseColumnWidth: baseColumnWidth.value,
-        gap: gapValue,
-        calculated: columns,
-        clamped: result,
-        min: minColumns.value,
-        max: maxColumns.value
-      })
-      return result
-    })
-
     // Distribute items into columns (round-robin)
     const columns = computed(() => {
       const cols = []
-      const numCols = numColumns.value
+      const numCols = maxColumns.value
 
       // Initialize columns
       for (let i = 0; i < numCols; i++) {
@@ -111,13 +77,6 @@ export default {
       processedItems.value.forEach((item, index) => {
         const colIndex = index % numCols
         cols[colIndex].push({ item, originalIndex: index })
-      })
-
-      console.log('[Masonry] Round-robin distribution:', {
-        numCols,
-        totalItems: processedItems.value.length,
-        columnsCreated: cols.length,
-        itemsPerColumn: cols.map(col => col.length)
       })
 
       return cols
@@ -136,60 +95,21 @@ export default {
       () => props.content?.items,
       (newItems) => {
         if (!Array.isArray(newItems)) {
-          console.log('[Masonry] Items is not an array:', newItems)
           processedItems.value = []
           setItemCount(0)
           return
         }
-        console.log('[Masonry] Items updated:', newItems.length, 'items')
         processedItems.value = [...newItems]
         setItemCount(newItems.length)
       },
       { immediate: true }
     )
 
-    // Observe container width changes
-    const observeContainerWidth = () => {
-      if (!masonryContainer.value) return
-
-      resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const newWidth = entry.contentRect.width
-          console.log('[Masonry] ResizeObserver triggered, new width:', newWidth)
-          containerWidth.value = newWidth
-        }
-      })
-
-      resizeObserver.observe(masonryContainer.value)
-      console.log('[Masonry] ResizeObserver attached to container')
-    }
-
-    // Lifecycle
-    onMounted(() => {
-      console.log('[Masonry] Component mounted, waiting 200ms...')
-      setTimeout(() => {
-        if (masonryContainer.value) {
-          const width = masonryContainer.value.offsetWidth
-          console.log('[Masonry] Container width measured:', width)
-          containerWidth.value = width
-          observeContainerWidth()
-        } else {
-          console.log('[Masonry] Container ref not available!')
-        }
-      }, 200)
-    })
-
-    onBeforeUnmount(() => {
-      if (resizeObserver) resizeObserver.disconnect()
-    })
-
     return {
-      masonryContainer,
       processedItems,
       hasItems,
       enableLazyLoading,
       getItemKey,
-      numColumns,
       columns,
       gap,
       /* wwEditor:start */
