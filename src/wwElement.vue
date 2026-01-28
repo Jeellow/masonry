@@ -136,8 +136,8 @@ export default {
   box-sizing: border-box;
   opacity: 0;
   transition: opacity 0.25s ease-in-out;
-  display: flex !important;
-  flex-direction: row !important;
+  display: flex;
+  flex-direction: row!important;
   gap: var(--gap, 16px);
 
   &.is-visible {
@@ -150,6 +150,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: var(--gap, 16px);
+  min-width: 0; /* Important pour flex shrink */
 }
 
 .masonry-item {
@@ -158,12 +159,20 @@ export default {
   transform: translateZ(0);
   animation: fadeInMasonry 0.3s ease-out;
   width: 100%;
+  max-width: 100%; /* Force items to respect column width */
+  overflow: hidden; /* Prevent overflow */
 }
 
 .masonry-item-content {
   width: 100%;
+  max-width: 100%; /* Force content to respect item width */
   height: 100%;
   contain: layout style;
+
+  /* Force all children to respect width */
+  :deep(> *) {
+    max-width: 100%;
+  }
 
   // Image lazy loading optimization
   :deep(img) {
