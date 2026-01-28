@@ -3,26 +3,29 @@
     ref="masonryContainer"
     class="masonry-container"
     :class="{ 'is-visible': hasItems }"
-    :style="{
-      '--num-columns': numColumns,
-      '--gap': `${gap}px`
-    }"
+    :style="{ '--gap': `${gap}px` }"
     v-show="hasItems"
   >
     <div
-      v-for="(item, index) in processedItems"
-      :key="getItemKey(item, index)"
-      class="masonry-item"
-      :class="{ 'lazy-load': enableLazyLoading }"
+      v-for="(column, colIndex) in columns"
+      :key="`col-${colIndex}`"
+      class="masonry-column"
     >
-      <wwLayoutItemContext
-        :index="index"
-        :item="item"
-        is-repeat
-        :data="item"
+      <div
+        v-for="{ item, originalIndex } in column"
+        :key="getItemKey(item, originalIndex)"
+        class="masonry-item"
+        :class="{ 'lazy-load': enableLazyLoading }"
       >
-        <wwLayout path="itemContent" class="masonry-item-content" />
-      </wwLayoutItemContext>
+        <wwLayoutItemContext
+          :index="originalIndex"
+          :item="item"
+          is-repeat
+          :data="item"
+        >
+          <wwLayout path="itemContent" class="masonry-item-content" />
+        </wwLayoutItemContext>
+      </div>
     </div>
   </div>
 </template>
@@ -81,6 +84,25 @@ export default {
       return Math.max(minColumns.value, Math.min(maxColumns.value, columns))
     })
 
+    // Distribute items into columns (round-robin)
+    const columns = computed(() => {
+      const cols = []
+      const numCols = numColumns.value
+
+      // Initialize columns
+      for (let i = 0; i < numCols; i++) {
+        cols.push([])
+      }
+
+      // Distribute items round-robin
+      processedItems.value.forEach((item, index) => {
+        const colIndex = index % numCols
+        cols[colIndex].push({ item, originalIndex: index })
+      })
+
+      return cols
+    })
+
     // Memoized key function
     const getItemKey = (item, index) => {
       if (item?.id !== undefined && item.id !== null) return `item-${item.id}`
@@ -136,6 +158,7 @@ export default {
       enableLazyLoading,
       getItemKey,
       numColumns,
+      columns,
       gap,
       /* wwEditor:start */
       isEditing,
@@ -152,14 +175,19 @@ export default {
   box-sizing: border-box;
   opacity: 0;
   transition: opacity 0.25s ease-in-out;
-
-  // CSS Columns for masonry layout
-  column-count: var(--num-columns, 3);
-  column-gap: var(--gap, 16px);
+  display: flex;
+  gap: var(--gap, 16px);
 
   &.is-visible {
     opacity: 1;
   }
+}
+
+.masonry-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap, 16px);
 }
 
 .masonry-item {
@@ -167,12 +195,7 @@ export default {
   backface-visibility: hidden;
   transform: translateZ(0);
   animation: fadeInMasonry 0.3s ease-out;
-
-  // Prevent items from breaking across columns
-  break-inside: avoid;
-  display: inline-block;
   width: 100%;
-  margin-bottom: var(--gap, 16px);
 }
 
 .masonry-item-content {
