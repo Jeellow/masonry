@@ -286,6 +286,7 @@ export default {
       enableLazyLoading,
       getItemKey,
       disableAnimations,
+      columnWidth,
       /* wwEditor:start */
       isEditing,
       /* wwEditor:end */
