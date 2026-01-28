@@ -163,6 +163,11 @@ export default {
         disableAnimations.value = true
 
         nextTick(() => {
+          // Update container width when becoming visible
+          if (masonryContainer.value) {
+            containerWidth.value = masonryContainer.value.offsetWidth
+          }
+
           if (!masonryInstance) {
             initMasonry()
           }
@@ -194,6 +199,17 @@ export default {
       }
     })
 
+    // Watch container width changes to reinitialize masonry
+    watch(containerWidth, (newWidth) => {
+      if (newWidth > 0 && masonryInstance && hasItems.value) {
+        destroyMasonry()
+        nextTick(() => {
+          initMasonry()
+          layoutMasonry(50)
+        })
+      }
+    })
+
     // Observe container width changes
     const observeContainerWidth = () => {
       if (!masonryContainer.value) return
@@ -212,18 +228,21 @@ export default {
 
     // Lifecycle
     onMounted(() => {
-      if (masonryContainer.value) {
-        // Set initial width
-        containerWidth.value = masonryContainer.value.offsetWidth
-        observeContainerWidth()
-      }
+      nextTick(() => {
+        if (masonryContainer.value) {
+          // Set initial width first
+          containerWidth.value = masonryContainer.value.offsetWidth
+          observeContainerWidth()
 
-      if (hasItems.value) {
-        nextTick(() => {
-          initMasonry()
-          layoutMasonry(100)
-        })
-      }
+          // Then initialize masonry if we have items
+          if (hasItems.value) {
+            nextTick(() => {
+              initMasonry()
+              layoutMasonry(100)
+            })
+          }
+        }
+      })
     })
 
     onBeforeUnmount(() => {
