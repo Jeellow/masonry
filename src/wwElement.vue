@@ -1,29 +1,31 @@
 <template>
-  <div
-    class="masonry-container"
-    :class="{ 'is-visible': hasItems }"
-    :style="{ '--gap': `${gap}px` }"
-    v-if="hasItems"
-  >
+  <div class="masonry-wrapper">
     <div
-      v-for="(column, colIndex) in columns"
-      :key="`col-${colIndex}`"
-      class="masonry-column"
+      class="masonry-container"
+      :class="{ 'is-visible': hasItems }"
+      :style="{ '--gap': `${gap}px` }"
+      v-show="hasItems"
     >
       <div
-        v-for="{ item, originalIndex } in column"
-        :key="getItemKey(item, originalIndex)"
-        class="masonry-item"
-        :class="{ 'lazy-load': enableLazyLoading }"
+        v-for="(column, colIndex) in columns"
+        :key="`col-${colIndex}`"
+        class="masonry-column"
       >
-        <wwLayoutItemContext
-          :index="originalIndex"
-          :item="item"
-          is-repeat
-          :data="item"
+        <div
+          v-for="{ item, originalIndex } in column"
+          :key="getItemKey(item, originalIndex)"
+          class="masonry-item"
+          :class="{ 'lazy-load': enableLazyLoading }"
         >
-          <wwLayout path="itemContent" class="masonry-item-content" />
-        </wwLayoutItemContext>
+          <wwLayoutItemContext
+            :index="originalIndex"
+            :item="item"
+            is-repeat
+            :data="item"
+          >
+            <wwLayout path="itemContent" class="masonry-item-content" />
+          </wwLayoutItemContext>
+        </div>
       </div>
     </div>
   </div>
@@ -130,6 +132,12 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.masonry-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
 .masonry-container {
   width: 100%;
   min-height: 100px;
@@ -137,7 +145,7 @@ export default {
   opacity: 0;
   transition: opacity 0.25s ease-in-out;
   display: flex;
-  flex-direction: row!important;
+  flex-direction: row;
   gap: var(--gap, 16px);
 
   &.is-visible {
