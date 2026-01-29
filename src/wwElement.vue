@@ -1,5 +1,5 @@
 <template>
-  <div class="masonry-wrapper">
+  <div class="masonry-wrapper" ref="containerRef">
     <div
       class="masonry-container"
       :class="{ 'is-visible': hasItems }"
@@ -32,7 +32,7 @@
 </template>
 
 <script>
-import { computed, watch, shallowRef } from 'vue'
+import { computed, watch, shallowRef, ref, onMounted, onBeforeUnmount } from 'vue'
 
 export default {
   props: {
@@ -58,21 +58,36 @@ export default {
 
     // Refs
     const processedItems = shallowRef([])
+    const containerWidth = ref(0)
+    const containerRef = ref(null)
 
     // Configuration
+    const minColumns = computed(() => props.content?.minColumns || 1)
     const maxColumns = computed(() => props.content?.maxColumns || 3)
+    const columnWidth = computed(() => props.content?.columnWidth || 200)
     const gap = computed(() => props.content?.gap ?? 16)
     const hasItems = computed(() => processedItems.value?.length > 0)
     const enableLazyLoading = computed(() => props.content?.enableLazyLoading !== false)
 
+    // Calculate number of columns based on container width
+    const numColumns = computed(() => {
+      if (!containerWidth.value) return maxColumns.value
+
+      const availableWidth = containerWidth.value
+      const gapValue = gap.value
+      const colWidth = columnWidth.value
+
+      // Calculate how many columns fit
+      const calculated = Math.floor((availableWidth + gapValue) / (colWidth + gapValue))
+
+      // Clamp between min and max
+      return Math.max(minColumns.value, Math.min(maxColumns.value, calculated))
+    })
+
     // Distribute items into columns (round-robin)
     const columns = computed(() => {
       const cols = []
-      const numCols = maxColumns.value
-
-      console.log('=== MASONRY DEBUG ===')
-      console.log('maxColumns:', numCols)
-      console.log('processedItems.length:', processedItems.value.length)
+      const numCols = numColumns.value
 
       // Initialize columns
       for (let i = 0; i < numCols; i++) {
@@ -82,13 +97,8 @@ export default {
       // Distribute items round-robin
       processedItems.value.forEach((item, index) => {
         const colIndex = index % numCols
-        console.log(`Item ${index} -> Column ${colIndex}`)
         cols[colIndex].push({ item, originalIndex: index })
       })
-
-      console.log('Columns created:', cols.length)
-      console.log('Items per column:', cols.map(c => c.length))
-      console.log('===================')
 
       return cols
     })
@@ -116,7 +126,34 @@ export default {
       { immediate: true }
     )
 
+    // ResizeObserver for container width
+    let resizeObserver = null
+
+    const observeContainer = () => {
+      if (!containerRef.value) return
+
+      resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          containerWidth.value = entry.contentRect.width
+        }
+      })
+
+      resizeObserver.observe(containerRef.value)
+    }
+
+    onMounted(() => {
+      if (containerRef.value) {
+        containerWidth.value = containerRef.value.offsetWidth
+        observeContainer()
+      }
+    })
+
+    onBeforeUnmount(() => {
+      if (resizeObserver) resizeObserver.disconnect()
+    })
+
     return {
+      containerRef,
       processedItems,
       hasItems,
       enableLazyLoading,
